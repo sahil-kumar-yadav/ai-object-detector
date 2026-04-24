@@ -33,6 +33,11 @@ export function renderPredictions(
 ): { hasPerson: boolean; objects: string[] } {
   const { showLabels = true, showBoundingBoxes = true, mirror = false } = options;
 
+  // Defensive: skip rendering if canvas has zero dimensions
+  if (ctx.canvas.width === 0 || ctx.canvas.height === 0) {
+    return { hasPerson: false, objects: [] };
+  }
+
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   let hasPerson = false;

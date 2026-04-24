@@ -11,7 +11,6 @@ import { StatsPanel } from "./StatsPanel";
 import { renderPredictions } from "@/utils/render-predictions";
 import { playAlertSound, takeScreenshot } from "@/utils/detections";
 import { AppSettings, DetectedObject, DetectionStats } from "@/types";
-import { cn } from "@/lib/utils";
 
 const DEFAULT_SETTINGS: AppSettings = {
   mirror: true,
@@ -29,13 +28,20 @@ export default function ObjectDetection() {
   const rafRef = useRef<number | null>(null);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [debugMsg, setDebugMsg] = useState("Initializing...");
+
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   const [stats, setStats] = useState<DetectionStats>({
     fps: 0,
     totalDetections: 0,
     uniqueObjects: {},
     inferenceTime: 0,
   });
-  const [cameraReady, setCameraReady] = useState(false);
 
   const frameCountRef = useRef(0);
   const fpsTimeRef = useRef(performance.now());
@@ -54,9 +60,14 @@ export default function ObjectDetection() {
     }
   }, []);
 
-  // Detection loop
+  // 🔍 Detection loop
   useEffect(() => {
-    if (!isReady || !cameraReady) return;
+    if (!isReady || !cameraReady) {
+      console.log("Waiting for model or camera...");
+      return;
+    }
+
+    console.log("Starting detection loop");
 
     let cancelled = false;
 
@@ -67,40 +78,79 @@ export default function ObjectDetection() {
       const video = webcamRef.current?.video;
       const canvas = canvasRef.current;
 
-      if (!modelInstance || !video || !canvas || video.readyState !== 4) {
+      if (!modelInstance) {
+        setDebugMsg("Model not ready");
+        return;
+      }
+
+      if (!video) {
+        setDebugMsg("Video not found");
         rafRef.current = requestAnimationFrame(detect);
         return;
       }
 
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+      if (!canvas) {
+        setDebugMsg("Canvas not found");
+        return;
       }
 
-      const startTime = performance.now();
-      const predictions = await modelInstance.detect(
-        video,
-        undefined,
-        settings.confidenceThreshold
-      );
-      const inferenceTime = performance.now() - startTime;
+      // Relaxed readyState check
+      if (video.readyState < 2) {
+        setDebugMsg("Video not ready yet...");
+        rafRef.current = requestAnimationFrame(detect);
+        return;
+      }
+
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        setDebugMsg("Video has no dimensions");
+        rafRef.current = requestAnimationFrame(detect);
+        return;
+      }
+
+      // Sync canvas size
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
 
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const { hasPerson } = renderPredictions(predictions as DetectedObject[], ctx, {
-        showLabels: settings.showLabels,
-        showBoundingBoxes: settings.showBoundingBoxes,
-        mirror: settings.mirror,
-      });
-
-      if (hasPerson && settings.audioAlerts) {
-        playAlertSound(settings.funMode ? "/public_pols-aagyi-pols.mp3" : undefined);
+      if (!ctx) {
+        setDebugMsg("Canvas context failed");
+        return;
       }
 
-      // Update FPS & stats every second
-      frameCountRef.current += 1;
+      const currentSettings = settingsRef.current;
+
+      const startTime = performance.now();
+
+      let predictions: DetectedObject[] = [];
+
+      try {
+        predictions = await modelInstance.detect(
+          video,
+          undefined,
+          currentSettings.confidenceThreshold
+        );
+      } catch (err) {
+        console.error("Detection error:", err);
+        setDebugMsg("Detection failed");
+        return;
+      }
+
+      const inferenceTime = performance.now() - startTime;
+
+      const { hasPerson } = renderPredictions(predictions, ctx, {
+        showLabels: currentSettings.showLabels,
+        showBoundingBoxes: currentSettings.showBoundingBoxes,
+        mirror: currentSettings.mirror,
+      });
+
+      if (hasPerson && currentSettings.audioAlerts) {
+        playAlertSound();
+      }
+
+      // FPS
+      frameCountRef.current++;
       const now = performance.now();
+
       if (now - fpsTimeRef.current >= 1000) {
         const fps = frameCountRef.current;
         frameCountRef.current = 0;
@@ -115,8 +165,10 @@ export default function ObjectDetection() {
           fps,
           totalDetections: predictions.length,
           uniqueObjects,
-          inferenceTime: Math.round(inferenceTime * 100) / 100,
+          inferenceTime: Math.round(inferenceTime),
         });
+
+        setDebugMsg(`Running | FPS: ${fps}`);
       }
 
       rafRef.current = requestAnimationFrame(detect);
@@ -128,88 +180,66 @@ export default function ObjectDetection() {
       cancelled = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isReady, cameraReady, model, settings, webcamRef]);
+  }, [isReady, cameraReady]);
 
-  const loadingSteps = [
-    { label: "Initialize TensorFlow.js", done: !isLoading || isReady },
-    { label: "Load COCO-SSD Model", done: isReady },
-    { label: "Start Camera Feed", done: cameraReady },
-  ];
-
+  // 🚨 Error UI
   if (error) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-8 text-center backdrop-blur-md"
-      >
-        <AlertTriangle className="h-10 w-10 text-red-400" />
-        <h3 className="text-lg font-semibold text-red-300">Model Load Failed</h3>
-        <p className="text-sm text-red-200/70">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-2 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/30"
-        >
-          Retry
-        </button>
-      </motion.div>
+      <div className="text-red-400">
+        Model error: {error}
+      </div>
     );
   }
 
   return (
-    <div className="flex w-full max-w-6xl flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-4">
+
+      {/* DEBUG PANEL */}
+      <div className="text-xs text-yellow-400 bg-black p-2 rounded">
+        {debugMsg} <br />
+        Model Ready: {String(isReady)} <br />
+        Camera Ready: {String(cameraReady)}
+      </div>
+
       <AnimatePresence mode="wait">
         {isLoading || !cameraReady ? (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="w-full max-w-lg rounded-2xl border border-slate-700/50 bg-slate-900/60 backdrop-blur-xl"
-          >
-            <LoadingScreen steps={loadingSteps} />
-          </motion.div>
+          <LoadingScreen
+            steps={[
+              { label: "Loading Model", done: isReady },
+              { label: "Starting Camera", done: cameraReady },
+            ]}
+          />
         ) : (
-          <motion.div
-            key="detector"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex w-full flex-col items-center gap-4"
-          >
-            <ControlBar
-              settings={settings}
-              onToggle={toggleSetting}
-              onCapture={handleCapture}
-              onThresholdChange={handleThresholdChange}
+          <div className="relative w-full max-w-2xl">
+            <Webcam
+              ref={webcamRef}
+              audio={false}
+              mirrored={settings.mirror}
+              screenshotFormat="image/png"
+              videoConstraints={{
+                facingMode: "user",
+              }}
+              onUserMedia={() => {
+                console.log("✅ Camera started");
+                setDebugMsg("Camera started");
+                setCameraReady(true);
+              }}
+              onUserMediaError={(err) => {
+                console.error("❌ Camera error:", err);
+                setDebugMsg("Camera error: " + err.message);
+              }}
+              className="w-full bg-black"
             />
 
-            <div className="relative w-full overflow-hidden rounded-2xl border border-slate-700/50 bg-black shadow-2xl shadow-cyan-500/5">
-              <Webcam
-                ref={webcamRef}
-                audio={false}
-                mirrored={settings.mirror}
-                screenshotFormat="image/png"
-                videoConstraints={{
-                  facingMode: "user",
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
-                }}
-                onUserMedia={() => setCameraReady(true)}
-                className="block w-full"
-              />
-              <canvas
-                ref={canvasRef}
-                className={cn(
-                  "pointer-events-none absolute left-0 top-0 h-full w-full",
-                  settings.mirror && "scale-x-[-1]"
-                )}
-              />
-              <StatsPanel stats={stats} isActive={cameraReady} />
-            </div>
-          </motion.div>
+            <canvas
+              ref={canvasRef}
+              className="absolute top-0 left-0 w-full h-full"
+            />
+
+            <StatsPanel stats={stats} isActive={cameraReady} />
+          </div>
         )}
       </AnimatePresence>
     </div>
   );
 }
-
