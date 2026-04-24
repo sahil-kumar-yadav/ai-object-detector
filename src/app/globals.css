@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Base styles */
 @layer base {
   :root {
     --background: 222 47% 4%;
@@ -28,18 +29,17 @@
   }
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* ✅ v4 custom utilities */
+@utility text-balance {
+  text-wrap: balance;
+}
 
-  .glass {
-    @apply border border-slate-700/50 bg-slate-900/60 backdrop-blur-xl;
-  }
+@utility glass {
+  @apply border border-slate-700/50 bg-slate-900/60 backdrop-blur-xl;
+}
 
-  .glass-strong {
-    @apply border border-slate-600/50 bg-slate-800/80 backdrop-blur-2xl;
-  }
+@utility glass-strong {
+  @apply border border-slate-600/50 bg-slate-800/80 backdrop-blur-2xl;
 }
 
 /* Range input styling */
@@ -68,4 +68,3 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.2);
 }
-

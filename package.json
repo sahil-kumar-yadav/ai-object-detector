@@ -14,30 +14,31 @@
     "prepare": "husky install"
   },
   "dependencies": {
-    "react": "^18",
-    "react-dom": "^18",
-    "next": "14.2.4",
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.17.0",
-    "lodash": "^4.17.21",
-    "react-webcam": "^7.2.0",
-    "framer-motion": "^11.0.0",
-    "lucide-react": "^0.400.0",
     "clsx": "^2.1.0",
+    "framer-motion": "^11.0.0",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.400.0",
+    "next": "^16.2.4",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-webcam": "^7.2.0",
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@types/lodash": "^4.17.0",
     "@types/node": "^20.12.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/lodash": "^4.17.0",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "prettier": "^3.2.0",
     "eslint-config-prettier": "^9.1.0",
     "husky": "^9.0.0",
-    "lint-staged": "^15.2.0"
+    "lint-staged": "^15.2.0",
+    "postcss": "^8",
+    "prettier": "^3.2.0",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^5.4.0"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -46,4 +47,3 @@
     ]
   }
 }
-
